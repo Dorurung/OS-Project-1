@@ -59,6 +59,8 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-o mlfqs". */
 bool thread_mlfqs;
 
+static int loadAvg;
+
 static void kernel_thread (thread_func *, void *aux);
 
 static void idle (void *aux UNUSED);
@@ -70,6 +72,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -98,6 +101,8 @@ thread_init (void)
   init_thread (initial_thread, "main", PRI_DEFAULT);
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
+
+  loadAvg = 0;
 }
 
 /* Starts preemptive thread scheduling by enabling interrupts.
@@ -174,6 +179,7 @@ thread_create (const char *name, int priority,
   enum intr_level old_level;
 
   ASSERT (function != NULL);
+  ASSERT (priority >= PRI_MIN && priority <= PRI_MAX);
 
   /* Allocate thread. */
   t = palloc_get_page (PAL_ZERO);
@@ -203,6 +209,8 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  if(thread_mlfqs) CalculatePriority(thread_current());
 
   intr_set_level (old_level);
 
@@ -355,35 +363,80 @@ thread_get_priority (void)
 
 /* Sets the current thread's nice value to NICE. */
 void
-thread_set_nice (int nice UNUSED) 
+thread_set_nice (int nice) 
 {
-  /* Not yet implemented. */
+  ASSERT(nice >= NICE_MIN && nice <= NICE_MAX);
+  thread_current()->nice = nice;
+  CalculateRecentCpu(thread_current());
+  CalculatePriority(thread_current());
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->nice;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return loadAvg;
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->recentCpu;
 }
-
+
+void CalculatePriority (struct thread* current)
+{
+  if(current == idle_thread) return;
+  current->priority = (PRI_MAX*100 - (current->recentCpu / 4) + current->nice * 2 * 100)/100;
+
+  if(current->priority > PRI_MAX) current->priority = PRI_MAX;
+  if(current->priority < PRI_MIN) current->priority = PRI_MIN;
+}
+
+void CalculateRecentCpu(struct thread* current)
+{
+	if(current == idle_thread) return;
+	int loadDouble = loadAvg * 2;
+	current->recentCpu = loadDouble/(loadDouble+1)*current->recentCpu + current->nice*100;	
+}
+
+void CalculateLoadAvg()
+{
+	int readyThreads;
+	readyThreads = list_size (&ready_list);
+	if(thread_current() != idle_thread) readyThreads++;
+	loadAvg = loadAvg * 59 / 60 + readyThreads * 100 / 60;
+}
+
+void CalculateRecentCpus()
+{
+  struct list_elem *e;
+  struct thread *t;
+  
+  for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
+    t = list_entry(e, struct thread, allelem);
+    CalculateRecentCpu(t);
+  }
+}
+
+void CalculatePriorities()
+{
+  struct list_elem *e;
+  struct thread *t;
+  
+  for(e = list_begin(&all_list); e != list_end(&all_list); e = list_next(e)) {
+    t = list_entry(e, struct thread, allelem);
+    CalculatePriority(t);
+  }
+}
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -468,6 +521,12 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  if(thread_mlfqs)
+  {
+		  t->nice = NICE_DEFAULT;
+		  if(t == initial_thread) t->recentCpu = 0;
+		  else t->recentCpu = thread_get_recent_cpu();
+  }
   t->magic = THREAD_MAGIC;
   list_push_back (&all_list, &t->allelem);
 }
