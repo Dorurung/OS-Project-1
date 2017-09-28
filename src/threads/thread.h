@@ -23,7 +23,9 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
+#define NICE_MIN -20
+#define NICE_MAX 20
+#define NICE_DEFAULT 0
 /* A kernel thread or user process.
 
    Each thread structure is stored in its own 4 kB page.  The
@@ -83,19 +85,19 @@ typedef int tid_t;
 struct thread
   {
     /* Owned by thread.c. */
-    tid_t tid;       /* Thread identifier. */
-    int64_t towakeuptick;
+    tid_t tid;                          /* Thread identifier. */
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int base_priority;
     struct list_elem allelem;           /* List element for all threads list. */
+    int64_t towakeuptick;    
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct list locks;
-    struct lock *lock_waiting;
+    
+    int nice;
+    int recentCpu;
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
@@ -104,7 +106,6 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
-    struct lock *tryinglock;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -134,7 +135,6 @@ void thread_sleep(int64_t ticks);
 void thread_awake(int64_t ticks);
 int64_t getnextticktowakeup(void);
 void updatenextticktowakeup(int64_t ticks);
-
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -147,4 +147,9 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+void CalculateLoadAvg(void);
+void CalculateRecentCpu(struct thread*);
+void CalculatePriority(struct thread*);
+void CalculateRecentCpus(void);
+void CalculatePriorities(void);
 #endif /* threads/thread.h */

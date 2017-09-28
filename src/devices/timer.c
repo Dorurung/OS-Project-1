@@ -120,7 +120,7 @@ timer_nsleep (int64_t ns)
   real_time_sleep (ns, 1000 * 1000 * 1000);
 }
 
-/* Busy-waits for approximately MS milliseconds.  Interrupts need
+/* Busy-waits for approximately MS milliseconds.  Interrupts need
    not be turned on.
 
    Busy waiting wastes CPU cycles, and busy waiting with
@@ -172,9 +172,16 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   thread_tick ();
-  if(getnextticktowakeup() <= ticks){
-    thread_awake(ticks);
+
+  if(thread_mlfqs){
+    thread_current()->recentCpu = thread_current()->recentCpu + 100;
+    if(ticks % TIMER_FREQ == 0) {
+      CalculateLoadAvg();
+      CalculateRecentCpus();
+    }
+    if(ticks % 4 == 2) CalculatePriorities();
   }
+  if(getnextticktowakeup() <= ticks) thread_awake(ticks);
 }
 
 /* Returns true if LOOPS iterations waits for more than one timer
